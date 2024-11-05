@@ -10,20 +10,16 @@ func main() {
 	deliveryChan := make(chan kafka.Event)
 	producer := NewKafkaProducer()
 	Publish("message", "test", producer, nil, deliveryChan)
-	producer.Flush(1000)
-
-	e := <-deliveryChan
-	msg := e.(*kafka.Message)
-	if msg.TopicPartition.Error != nil {
-		fmt.Println("Could send the message.")
-	} else {
-		fmt.Println("Message sent:", msg.TopicPartition)
-	}
+    go DeliveryReport(deliveryChan)
+    producer.Flush(1000)
 }
 
 func NewKafkaProducer() *kafka.Producer{
 	configMap := &kafka.ConfigMap{
 		"bootstrap.servers": "fc2-gokafka-kafka-1:9092",
+        "delivery.timeout.ms": "0",
+        "acks": "all",
+        "enable.idempotence": "true",
 	}
 	p, err := kafka.NewProducer(configMap)
 	if err != nil {
@@ -40,7 +36,20 @@ func Publish(msg string, topic string, producer *kafka.Producer, key []byte, del
 	}
 	err := producer.Produce(message, deliveryChan)
 	if err != nil {
-		return err
+	    return err
 	}
 	return nil
+}
+
+func DeliveryReport(deliveryChan chan kafka.Event) {
+	for e := range deliveryChan{
+        switch ev := e.(type) {
+        case *kafka.Message:
+			if ev.TopicPartition.Error != nil {
+				fmt.Println("Could send the message.")
+			} else {
+				fmt.Println("Message sent:", ev.TopicPartition)
+			}
+        }
+	}
 }
